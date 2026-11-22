@@ -30,6 +30,7 @@ button.danger{color:var(--danger)}
 button.block{width:100%;margin-top:16px}
 input,select,textarea{font:inherit;font-size:16px;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;width:100%}
 input[type=checkbox],input[type=radio]{width:auto;accent-color:var(--accent)}
+input:disabled{opacity:.45}
 textarea{font-family:ui-monospace,Menlo,monospace;font-size:14px}
 code,pre{font-family:ui-monospace,Menlo,monospace;font-size:13px}
 pre{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;overflow:auto}
@@ -162,7 +163,7 @@ pre{background:var(--card);border:1px solid var(--line);border-radius:10px;paddi
   ],
   "owned": ["honolulu-72"],
   "singles": [
-    { "series": "Oahu", "code": "KOD", "hex": "#RRGGBB" }
+    { "series": "Oahu", "code": "KOD", "name": "Nazwa", "hex": "#RRGGBB" }
   ]
 }</pre>
     <p class="muted small">Kolor można podać jako obiekt albo jako tekst „kod; nazwa; #hex”. Pola „owned” i „singles” są opcjonalne, hex w „singles” też.</p>
@@ -287,14 +288,15 @@ function catalogColor(code, series) {
 
 function singleColor(x) {
   const c = catalogColor(x.code, x.series) || { code: x.code, name: '', hex: null, old: '' };
-  return { ...c, hex: x.hex || c.hex, userHex: !!x.hex };
+  return { ...c, name: x.name || c.name, hex: x.noHex ? null : (x.hex || c.hex), userHex: !!x.hex };
 }
 
 function normSingle(x) {
   if (!x || typeof x !== 'object') return null;
   const code = String(x.code ?? '').trim().toUpperCase();
   if (!code) return null;
-  return { id: x.id ? String(x.id) : newId(), series: SERIES_CLASS[x.series] ? x.series : '', code, hex: normHex(x.hex) };
+  const hex = normHex(x.hex);
+  return { id: x.id ? String(x.id) : newId(), series: SERIES_CLASS[x.series] ? x.series : '', code, name: String(x.name ?? '').trim(), hex, noHex: !hex && !!x.noHex };
 }
 
 const SINGLE_SETS = {};
@@ -424,7 +426,10 @@ function ownedColors() {
     const key = (c.code || '').trim().toUpperCase() || (c.hex || '') + '|' + (c.name || '').toLowerCase();
     let e = map.get(key);
     if (!e) { e = { code: c.code, name: c.name, hex: c.hex, olds: [], sets: [] }; map.set(key, e); }
-    else { if ((!e.hex || c.userHex) && c.hex) e.hex = c.hex; if (!e.name && c.name) e.name = c.name; }
+    else {
+      if ((!e.hex || c.userHex) && c.hex) e.hex = c.hex;
+      if (c.name && !(e.name || '').split(' / ').includes(c.name)) e.name = e.name ? e.name + ' / ' + c.name : c.name;
+    }
     if (c.old && !e.olds.some(o => o.series === set.series && o.old === c.old)) e.olds.push({ series: set.series, old: c.old });
     if (!e.sets.includes(set)) e.sets.push(set);
   };
@@ -525,7 +530,7 @@ function renderSingles() {
   box.innerHTML = `<div class="grid">${list.map(({ x, c }) => `<button class="card" data-single="${esc(x.id)}">
     <span class="sw" style="background:${c.hex || 'transparent'}"${c.hex ? '' : ' data-empty'}></span>
     <span class="meta"><b>${esc(c.code)}</b>${c.old && c.old !== c.code ? `<span class="old">dawniej ${esc(c.old)}</span>` : ''}${c.name ? `<span class="nm">${esc(c.name)}</span>` : ''}
-    <span class="badges"><i class="${SERIES_CLASS[x.series] || ''}">${esc(x.series || 'inna')}</i>${x.hex ? '<i>własny hex</i>' : ''}</span></span>
+    <span class="badges"><i class="${SERIES_CLASS[x.series] || ''}">${esc(x.series || 'inna')}</i>${x.hex ? '<i>własny hex</i>' : ''}${x.noHex ? '<i>bez koloru</i>' : ''}${x.name ? '<i>własna nazwa</i>' : ''}</span></span>
   </button>`).join('')}</div>`;
 }
 
@@ -535,64 +540,82 @@ function openSingle(id) {
     <label class="field">Seria<select id="sSeries" style="margin-top:4px">
       <option value="Honolulu">Honolulu</option><option value="Oahu">Oahu</option><option value="">inna / własna</option></select></label>
     <label class="field">Kod<input id="sCode" list="codeList" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="np. kod ze skuwki"></label>
+    <label class="field">Nazwa (opcjonalnie)<input id="sName" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="np. nazwa z naklejki"></label>
     <label class="field">Hex (opcjonalnie)
       <span class="row" style="margin:4px 0 0;flex-wrap:nowrap"><input id="sHex" placeholder="#RRGGBB" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><input id="sPick" type="color" value="#ffffff" style="width:52px;height:44px;padding:2px;flex:none"></span></label>
+    <label class="row" id="sNoHexRow" style="margin:4px 0 0;font-size:14px;color:var(--muted)" hidden><input type="checkbox" id="sNoHex"> Bez koloru (nie używaj hex z katalogu)</label>
     <div id="sInfo" class="sinfo"></div>
     <div class="row between" style="margin-top:16px">
       ${x ? '<button id="sDelete" class="danger">Usuń</button>' : '<span></span>'}
       <span class="row" style="margin:0">${x ? '<button id="sCancel">Anuluj</button><button id="sSave" class="primary">Zapisz</button>' : '<button id="sCancel">Gotowe</button><button id="sSave" class="primary">Dodaj</button>'}</span>
     </div>`);
-  const code = $('#sCode'), hexIn = $('#sHex'), pick = $('#sPick'), ser = $('#sSeries');
+  const code = $('#sCode'), nameIn = $('#sName'), hexIn = $('#sHex'), pick = $('#sPick'), ser = $('#sSeries'), noHex = $('#sNoHex');
   ser.value = x ? x.series : (state.lastSeries ?? 'Honolulu');
-  if (x) { code.value = x.code; hexIn.value = x.hex || ''; }
+  if (x) { code.value = x.code; nameIn.value = x.name || ''; hexIn.value = x.hex || ''; noHex.checked = !!x.noHex; }
+  const dot = h => h ? `<span class="dot" style="background:${h}"></span>` : '<span class="dot" data-empty></span>';
   const upd = () => {
-    const c = code.value.trim().toUpperCase(), series = ser.value, hex = normHex(hexIn.value);
+    const c = code.value.trim().toUpperCase(), series = ser.value;
     const cat = c ? catalogColor(c, series) : null;
+    $('#sNoHexRow').hidden = !cat;
+    const off = !!cat && noHex.checked;
+    if (off) hexIn.value = '';
+    hexIn.disabled = pick.disabled = off;
+    const hex = off ? null : normHex(hexIn.value);
+    nameIn.placeholder = cat ? cat.name + ' (z katalogu)' : 'np. nazwa z naklejki';
+    hexIn.placeholder = cat && !off ? cat.hex + ' (z katalogu)' : '#RRGGBB';
+    const name = nameIn.value.trim();
     let html;
     if (!c) {
       html = '<p class="muted small">Wpisz kod ze skuwki. Nazwa, kolor i dawny kod uzupełnią się z katalogu. Możesz też wpisać stary kod, podpowiem nowy.</p>';
     } else if (cat) {
       const inSets = ownedSets().filter(s => s.colors.some(k => k.code === c)).map(s => s.label || s.name);
-      html = `<div class="row"><span class="dot" style="background:${hex || cat.hex}"></span><span><b>${esc(c)}</b> ${esc(cat.name)}`
+      html = `<div class="row">${dot(off ? null : hex || cat.hex)}<span><b>${esc(c)}</b> ${esc(name || cat.name)}`
+        + (name && name !== cat.name ? `<br><span class="muted small">w katalogu: ${esc(cat.name)}</span>` : '')
         + (cat.old && cat.old !== c ? `<br><span class="muted small">dawniej ${esc(cat.old)}</span>` : '')
-        + (hex ? '<br><span class="muted small">używasz własnego hex</span>' : '')
+        + (off ? '<br><span class="muted small">bez podglądu koloru, rodzina według kodu</span>' : hex ? '<br><span class="muted small">używasz własnego hex</span>' : '')
         + (inSets.length ? `<br><span class="small">Masz już w zestawie: ${esc(inSets.join(', '))}</span>` : '')
         + '</span></div>';
     } else {
       const alt = (series ? [series] : ['Honolulu', 'Oahu']).map(s => OLD_INDEX[s].get(c)).find(Boolean);
       html = `<p class="small">Kodu <b>${esc(c)}</b> nie ma w katalogu.${hex ? '' : ' Bez hex kolor nie będzie miał podglądu.'}</p>`
         + (alt ? `<p class="small">To dawny kod. Nowy kod: <b>${esc(alt)}</b> ${esc(CATALOG.colors[alt][0])} <button id="sUseAlt" type="button">Użyj ${esc(alt)}</button></p>` : '')
-        + (hex ? `<span class="dot" style="background:${hex}"></span>` : '');
+        + (hex ? dot(hex) : '');
       setTimeout(() => { const b = $('#sUseAlt'); if (b) b.onclick = () => { code.value = alt; upd(); }; });
     }
     $('#sInfo').innerHTML = html;
-    pick.value = hex || (cat ? cat.hex : '#ffffff');
+    pick.value = hex || (cat && !off ? cat.hex : '#ffffff');
   };
   code.addEventListener('input', upd);
+  nameIn.addEventListener('input', upd);
   hexIn.addEventListener('input', upd);
   ser.addEventListener('change', upd);
+  noHex.addEventListener('change', upd);
   pick.addEventListener('input', () => { hexIn.value = pick.value; upd(); });
   upd();
   $('#sCancel').onclick = closeSheet;
   $('#sSave').onclick = () => {
     const c = code.value.trim().toUpperCase();
     if (!c) { toast('Podaj kod koloru'); return; }
-    const raw = hexIn.value.trim(), hex = normHex(raw);
+    const series = ser.value, name = nameIn.value.trim();
+    const off = !!catalogColor(c, series) && noHex.checked;
+    const raw = off ? '' : hexIn.value.trim(), hex = normHex(raw);
     if (raw && !hex) { toast('Hex musi mieć format #RRGGBB'); return; }
-    const series = ser.value;
-    if (state.singles.some(s => s !== x && s.series === series && s.code === c)) { toast(`${c} już jest na liście`); return; }
+    if (state.singles.some(s => s !== x && s.series === series && s.code === c && (s.name || '').toLowerCase() === name.toLowerCase())) {
+      toast(`${c}${name ? ' „' + name + '”' : ''} już jest na liście`); return;
+    }
     state.lastSeries = series;
+    const data = { series, code: c, name, hex, noHex: off };
     if (x) {
-      Object.assign(x, { series, code: c, hex });
+      Object.assign(x, data);
       save(); closeSheet(); render(); toast('Zapisano');
     } else {
-      state.singles.push({ id: newId(), series, code: c, hex });
+      state.singles.push({ id: newId(), ...data });
       save(); render(); toast(`Dodano ${c}`);
-      code.value = ''; hexIn.value = ''; upd(); code.focus();
+      code.value = ''; nameIn.value = ''; hexIn.value = ''; noHex.checked = false; upd(); code.focus();
     }
   };
   if (x) $('#sDelete').onclick = () => {
-    if (!confirm(`Usunąć ${x.code}?`)) return;
+    if (!confirm(`Usunąć ${x.code}${x.name ? ' „' + x.name + '”' : ''}?`)) return;
     state.singles = state.singles.filter(s => s !== x);
     save(); closeSheet(); render(); toast('Usunięto');
   };
@@ -775,7 +798,7 @@ $('#wipe').onclick = () => {
   save(); setView('sets'); toast('Przywrócono stan początkowy');
 };
 $('#sourceInfo').textContent = CATALOG.source;
-$('#appVersion').textContent = 'Wersja pliku: 2026-11-22 20:32';
+$('#appVersion').textContent = 'Wersja pliku: 2026-11-22 20:49';
 
 $('#overlay').addEventListener('click', e => { if (e.target.id === 'overlay') closeSheet(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#overlay').hidden) closeSheet(); });
