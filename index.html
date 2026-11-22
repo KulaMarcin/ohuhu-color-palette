@@ -177,6 +177,7 @@ pre{background:var(--card);border:1px solid var(--line);border-radius:10px;paddi
 
     <h3>Źródło danych</h3>
     <p class="muted small" id="sourceInfo"></p>
+    <p class="muted small" id="appVersion"></p>
   </section>
 </main>
 <datalist id="codeList"></datalist>
@@ -204,7 +205,7 @@ try { localStorage.setItem(KEY + '-t', '1'); localStorage.removeItem(KEY + '-t')
 const FAMILIES = [
   ['red', 'Czerwienie'], ['orange', 'Pomarańcze'], ['yellow', 'Żółcie'], ['ygreen', 'Żółtozielone'],
   ['green', 'Zielenie'], ['teal', 'Turkusy'], ['blue', 'Niebieskie'], ['violet', 'Fiolety'],
-  ['pink', 'Róże i magenty'], ['brown', 'Brązy i beże'], ['gray', 'Szarości, biel i czerń'], ['none', 'Bez podglądu (brak hex)']
+  ['pink', 'Róże i magenty'], ['brown', 'Brązy i beże'], ['gray', 'Szarości, biel i czerń'], ['none', 'Nieznana rodzina (brak hex)']
 ];
 
 function normHex(v) {
@@ -366,7 +367,7 @@ function family(hex) {
   if (s < 0.12 || l > 0.95 || l < 0.08) return 'gray';
   if (h >= 12 && h < 55 && (l < 0.45 || s < 0.5)) return 'brown';
   if (h < 12 || h >= 345) return l > 0.78 ? 'pink' : 'red';
-  if (h < 40) return 'orange';
+  if (h < 30) return 'orange';
   if (h < 65) return 'yellow';
   if (h < 90) return 'ygreen';
   if (h < 165) return 'green';
@@ -375,6 +376,20 @@ function family(hex) {
   if (h < 300) return 'violet';
   return 'pink';
 }
+
+const PREFIX_FAMILY = {
+  R: 'red', RV: 'pink', YR: 'orange', Y: 'yellow', YG: 'ygreen', G: 'green', BG: 'teal', B: 'blue', BV: 'blue', V: 'violet',
+  E: 'brown', WG: 'gray', CG: 'gray', GG: 'gray', BGY: 'gray', YGY: 'gray'
+};
+
+function codeFamily(code) {
+  const c = String(code || '').trim().toUpperCase();
+  if (c === '0' || c === '120') return 'gray';
+  const m = c.match(/^[A-Z]+/);
+  return (m && PREFIX_FAMILY[m[0]]) || 'none';
+}
+
+const familyOf = c => c.hex ? family(c.hex) : codeFamily(c.code);
 
 const natural = (a, b) => (a.code || '').localeCompare(b.code || '', 'pl', { numeric: true, sensitivity: 'base' });
 
@@ -432,7 +447,7 @@ function groupColors(list) {
     groups = [...m].sort((a, b) => a[0].localeCompare(b[0])).map(([title, items]) => ({ title, items }));
   } else {
     const m = new Map(FAMILIES.map(([k, title]) => [k, { title, items: [] }]));
-    for (const c of list) m.get(family(c.hex)).items.push(c);
+    for (const c of list) m.get(familyOf(c)).items.push(c);
     groups = [...m.values()];
   }
   const cmp = sorter();
@@ -760,6 +775,7 @@ $('#wipe').onclick = () => {
   save(); setView('sets'); toast('Przywrócono stan początkowy');
 };
 $('#sourceInfo').textContent = CATALOG.source;
+$('#appVersion').textContent = 'Wersja pliku: 2026-11-22 20:32';
 
 $('#overlay').addEventListener('click', e => { if (e.target.id === 'overlay') closeSheet(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#overlay').hidden) closeSheet(); });
